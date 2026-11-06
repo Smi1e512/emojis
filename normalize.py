@@ -117,6 +117,8 @@ def main():
     args.cache.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
     sources = json.loads(args.manifest.read_text())
+    names_path = args.output / 'semantic_names.json'
+    semantic_names = json.loads(names_path.read_text()) if names_path.exists() else {}
     manifest, failures, seen = [], [], {}
     with cf.ThreadPoolExecutor(max_workers=args.workers) as executor:
         jobs = executor.map(lambda item: process(item, args.cache), sources)
@@ -130,13 +132,18 @@ def main():
                 else:
                     kind = '动图' if meta['animated'] else '静态图'
                     extension = '.gif' if meta['animated'] else '.png'
-                    relative = Path(item['role']) / kind / (meta['pixel_hash'][:16]+extension)
+                    naming = semantic_names.get(meta['pixel_hash'])
+                    filename = naming['filename'] if naming else meta['pixel_hash'][:16]+extension
+                    relative = Path(item['role']) / kind / filename
                     target = args.output / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(data)
                     entry = dict(path=relative.as_posix(), role=item['role'],
                         title=item['title'], size=[128,128], bytes=len(data),
                         sources=[item], **meta)
+                    if naming:
+                        entry.update(name=naming['name'], description=naming['name'],
+                                     previous_path=naming['previous_path'])
                     seen[key] = entry
                     manifest.append(entry)
             if index % 50 == 0:
